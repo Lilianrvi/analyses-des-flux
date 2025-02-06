@@ -2,8 +2,7 @@
 import streamlit as st
 import io
 from extraction import extract_data_from_pdf, validate_client_info
-from excel_generator import load_template_workbook, fill_excel_workbook, fill_excel_workbook_addition
-from openpyxl import load_workbook
+from excel_generator import load_template_workbook, fill_excel_workbook
 import config
 from openpyxl.styles import Alignment
 
