@@ -105,5 +105,6 @@ urllib3==2.3.0
 watchdog==6.0.0
 Werkzeug==3.1.3
 wsproto==1.2.0
+xlwings==0.27.15
 zope.event==5.0
 zope.interface==7.2
