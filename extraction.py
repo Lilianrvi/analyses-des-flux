@@ -120,7 +120,7 @@ def extract_data_from_pdf(pdf):
         return data, full_text
 
 def validate_client_info(extracted_data):
-    client_names = {data.get('Nom du client','') for data in extracted_data}
+    client_names = {data.get('Nom du client', '') for data in extracted_data}
     client_accounts = {tuple(sorted(data.get('Comptes clients', []))) for data in extracted_data}
     if len(client_names) > 1:
         return False, "Les fichiers PDF contiennent des noms de clients différents."
