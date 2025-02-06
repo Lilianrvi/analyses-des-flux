@@ -7,23 +7,22 @@ def load_template_workbook():
     template_path = "template.xlsx"
     if not os.path.exists(template_path):
         raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
-    # Charger le workbook sans option data_only pour conserver toutes les règles
-    wb = load_workbook(filename=template_path)
+    wb = load_workbook(filename=template_path)  # Charger le workbook en conservant les styles et règles conditionnelles
     if config.EXCEL_SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
     return wb
 
 def set_cell_value(ws, cell_coord, value):
     """
-    Met à jour uniquement la valeur de la cellule existante (ou la cellule en haut à gauche
-    d'une plage fusionnée) sans toucher au style ni aux règles conditionnelles.
+    Met à jour uniquement la valeur de la cellule existante (ou celle en haut à gauche d'une plage fusionnée)
+    sans modifier les styles ni les règles conditionnelles.
     """
     try:
         new_value = float(value)
     except (ValueError, TypeError):
         new_value = value
 
-    # Si la cellule fait partie d'une plage fusionnée, on récupère la cellule en haut à gauche.
+    # Vérifier si la cellule est dans une plage fusionnée
     for merged_range in ws.merged_cells.ranges:
         if cell_coord in merged_range:
             cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
@@ -33,7 +32,7 @@ def set_cell_value(ws, cell_coord, value):
 
 def fill_excel_workbook(wb, data_par_produit, client_info):
     ws = wb[config.EXCEL_SHEET_NAME]
-    # Mise à jour des champs globaux sans toucher aux styles existants
+    # Champs globaux
     set_cell_value(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
@@ -44,7 +43,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     parts = period_str.split()
     if len(parts) < 9:
         raise ValueError("Format de période invalide.")
-    quoted_date = parts[8]  # ex: "12/2024"
+    quoted_date = parts[8]  # par exemple "12/2024"
     try:
         last_month = int(quoted_date.split("/")[0])
     except Exception:
@@ -53,7 +52,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     
     # Mise à jour des en-têtes (Année N et Année N-1) à partir de la période
     quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
-    quoted_date_N   = parts[8]  # ex: "12/2024" pour N
+    quoted_date_N = parts[8]    # ex: "12/2024" pour N
     year_N_1 = quoted_date_N_1.split("/")[1]
     year_N = quoted_date_N.split("/")[1]
     if year_N_1 == year_N:
@@ -67,7 +66,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     for cell in cells_N_1:
         set_cell_value(ws, cell, header_val_N_1)
     
-    # Remplissage des données variables dans les cellules définies dans EXCEL_STRUCTURE
+    # Remplissage des données variables uniquement pour les cellules définies dans EXCEL_STRUCTURE
     for tableau, annees in config.EXCEL_STRUCTURE.items():
         for annee, produits in annees.items():
             for produit, cell in produits.items():
@@ -84,7 +83,10 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
                     valeur = 0
                 set_cell_value(ws, cell, valeur)
     
-    # IMPORTANT : Forcer Excel à recalculer le classeur lors de l'ouverture
-    wb.calculation_properties.fullCalcOnLoad = True
+    # Forcer Excel à recalculer lors de l'ouverture (si disponible)
+    try:
+        wb.calculation_properties.fullCalcOnLoad = True
+    except AttributeError:
+        pass
     
     return wb
