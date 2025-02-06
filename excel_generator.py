@@ -7,41 +7,50 @@ def load_template_workbook():
     template_path = "template.xlsx"
     if not os.path.exists(template_path):
         raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
-    wb = load_workbook(filename=template_path)  # Charge le workbook en conservant tous les styles et règles
+    # Charge le workbook sans modifier les styles ni la mise en forme conditionnelle
+    wb = load_workbook(filename=template_path)
     if config.EXCEL_SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
     return wb
 
 def set_cell_value(ws, cell_coord, value):
     """
-    Met à jour uniquement la valeur de la cellule existante (ou la cellule fusionnée en haut à gauche),
-    afin de ne pas perdre les styles et les règles conditionnelles déjà appliqués.
+    Met à jour uniquement la valeur de la cellule existante sans toucher à son format.
+    Ceci permet de conserver la mise en forme conditionnelle (ex : remplissage rouge pour les valeurs négatives).
     """
+    # Récupère la cellule existante
+    cell = ws[cell_coord]
+    # Conserve le number_format avant modification
+    current_format = cell.number_format
+
+    # Tente de convertir la valeur en entier si possible
     try:
         numeric_value = int(value)
     except (ValueError, TypeError):
         numeric_value = None
     new_value = numeric_value if numeric_value is not None else value
 
-    # Si la cellule fait partie d'une plage fusionnée, on récupère la cellule en haut à gauche.
+    # Si la cellule fait partie d'une plage fusionnée, mettre à jour la cellule en haut à gauche
     for merged_range in ws.merged_cells.ranges:
         if cell_coord in merged_range:
-            cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
-            cell.value = new_value
+            top_left = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
+            top_left.value = new_value
+            top_left.number_format = current_format
             return
-    # Sinon, récupère la cellule existante et modifie uniquement sa valeur.
-    cell = ws[cell_coord]
+
+    # Mettre à jour la valeur de la cellule sans réinitialiser ses styles
     cell.value = new_value
+    cell.number_format = current_format
 
 def fill_excel_workbook(wb, data_par_produit, client_info):
     ws = wb[config.EXCEL_SHEET_NAME]
-    # Champs globaux
+    # Mettre à jour les champs globaux sans toucher aux styles existants
     set_cell_value(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
     set_cell_value(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
     
-    # Pour I6, extraire le mois (en nombre) de la dernière date de la période (format mm/aaaa)
+    # Pour I6, extraire le mois (nombre) de la dernière date de la période (format mm/aaaa)
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
@@ -53,8 +62,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
         last_month = 0
     set_cell_value(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
     
-    # Pour les en-têtes, utiliser la période du premier fichier Excel importé.
-    # Format attendu : "Du mm/aaaa au mm/aaaa et du mm/aaaa au mm/aaaa"
+    # Mise à jour des en-têtes (Année N et Année N-1) à partir de la période
     quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
     quoted_date_N = parts[8]    # ex: "12/2024" pour N
     year_N_1 = quoted_date_N_1.split("/")[1]
@@ -70,7 +78,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     for cell in cells_N_1:
         set_cell_value(ws, cell, header_val_N_1)
     
-    # Remplissage des données variables uniquement pour les cellules définies dans EXCEL_STRUCTURE
+    # Remplissage des données variables dans les cellules du tableau définies dans EXCEL_STRUCTURE
     for tableau, annees in config.EXCEL_STRUCTURE.items():
         for annee, produits in annees.items():
             for produit, cell in produits.items():
