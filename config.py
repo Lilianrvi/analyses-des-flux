@@ -92,5 +92,3 @@ GLOBAL_FIELDS = {
 
 # Nom de la feuille Excel contenant toutes les tables
 EXCEL_SHEET_NAME = "KPI activité client"
-
-TEMPLATE_PATH = "template.xlsx"
