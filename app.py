@@ -2,8 +2,7 @@
 import streamlit as st
 import io
 from extraction import extract_data_from_pdf, validate_client_info
-from excel_generator import load_template_workbook  # Pour l'extraction PDF, on utilisera openpyxl
-from excel_generator import update_excel_with_xlwings  # Pour l'addition de fichiers Excel via xlwings
+from excel_generator import load_template_workbook, fill_excel_workbook, update_excel_with_xlwings
 import config
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
@@ -106,7 +105,6 @@ if mode == "Extraction depuis PDF":
                 st.error(error_msg)
                 st.stop()
             
-            # Pour l'extraction depuis PDF, on utilise openpyxl (comme précédemment)
             from excel_generator import fill_excel_workbook
             wb = load_template_workbook()
             wb = fill_excel_workbook(wb, data_par_produit, client_info)
@@ -152,7 +150,6 @@ else:  # Mode "Addition de fichiers Excel"
         key="excel_files"
     )
     
-    # Bouton Clear Files pour Excel
     clear_excel = st.button("Clear Excel Files")
     if clear_excel:
         st.session_state.excel_uploader_key = st.session_state.get("excel_uploader_key", 0) + 1
@@ -172,7 +169,7 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure d'addition pour les cellules définies dans EXCEL_STRUCTURE
+            # Initialiser la structure pour additionner uniquement les valeurs des cellules définies dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -185,7 +182,7 @@ else:  # Mode "Addition de fichiers Excel"
             combined_global_accounts = []
             combined_period = None  # On utilisera la période du premier fichier
             
-            # Parcourir chaque fichier Excel et additionner les valeurs des cellules du tableau
+            # Parcourir chaque fichier Excel et additionner les valeurs
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
@@ -198,7 +195,7 @@ else:  # Mode "Addition de fichiers Excel"
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les valeurs dans les cellules indiquées par EXCEL_STRUCTURE
+                # Additionner uniquement les cellules indiquées dans EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -212,22 +209,35 @@ else:  # Mode "Addition de fichiers Excel"
                                 val = 0.0
                             combined_data[table_key][year][product] += val
             
-            # Pour les champs globaux, on reprend ceux du premier fichier
+            # Pour les champs globaux, reprendre ceux du premier fichier
             new_client_name = combined_global_names[0] if combined_global_names else ""
             new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            # Utiliser xlwings pour mettre à jour le template Excel et conserver les mises en forme conditionnelles
-            from excel_generator import update_excel_with_xlwings
-            output_path = "output_combined.xlsx"
-            update_excel_with_xlwings(combined_data, 
-                                      {"Nom du client": new_client_name, 
-                                       "Comptes clients": new_client_accounts, 
-                                       "Périodicité": new_period},
-                                      output_path)
-            
-            with open(output_path, "rb") as f:
-                output_data = f.read()
+            # Selon l'environnement, utiliser xlwings (si Windows) pour préserver les formats conditionnels,
+            # sinon utiliser fill_excel_workbook avec openpyxl.
+            import sys
+            if sys.platform.startswith("win"):
+                from excel_generator import update_excel_with_xlwings
+                output_path = "output_combined.xlsx"
+                update_excel_with_xlwings(combined_data,
+                                          {"Nom du client": new_client_name,
+                                           "Comptes clients": new_client_accounts,
+                                           "Périodicité": new_period},
+                                          output_path)
+                with open(output_path, "rb") as f:
+                    output_data = f.read()
+            else:
+                # Sur non-Windows, utiliser openpyxl (attention : cela peut altérer les formats conditionnels complexes)
+                from excel_generator import fill_excel_workbook
+                wb_new = load_template_workbook()
+                wb_new = fill_excel_workbook(wb_new, combined_data, {"Nom du client": new_client_name,
+                                                                      "Comptes clients": new_client_accounts,
+                                                                      "Périodicité": new_period})
+                output_buffer = io.BytesIO()
+                wb_new.save(output_buffer)
+                output_buffer.seek(0)
+                output_data = output_buffer.getvalue()
             
             st.success("Les fichiers Excel ont été combinés avec succès !")
             st.download_button(
