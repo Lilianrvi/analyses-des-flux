@@ -7,22 +7,23 @@ def load_template_workbook():
     template_path = "template.xlsx"
     if not os.path.exists(template_path):
         raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
-    wb = load_workbook(filename=template_path)  # Charger le workbook en conservant les styles et règles conditionnelles
+    # Charger le workbook en conservant tous les styles et règles conditionnelles.
+    wb = load_workbook(filename=template_path)
     if config.EXCEL_SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
     return wb
 
 def set_cell_value(ws, cell_coord, value):
     """
-    Met à jour uniquement la valeur de la cellule existante (ou celle en haut à gauche d'une plage fusionnée)
-    sans modifier les styles ni les règles conditionnelles.
+    Met à jour uniquement la valeur de la cellule existante (ou la cellule en haut à gauche d'une plage fusionnée)
+    sans toucher aux styles, formats ni aux règles conditionnelles.
     """
     try:
         new_value = float(value)
     except (ValueError, TypeError):
         new_value = value
 
-    # Vérifier si la cellule est dans une plage fusionnée
+    # Si la cellule fait partie d'une plage fusionnée, récupérer la cellule en haut à gauche.
     for merged_range in ws.merged_cells.ranges:
         if cell_coord in merged_range:
             cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
@@ -32,25 +33,27 @@ def set_cell_value(ws, cell_coord, value):
 
 def fill_excel_workbook(wb, data_par_produit, client_info):
     ws = wb[config.EXCEL_SHEET_NAME]
-    # Champs globaux
+
+    # Mettre à jour les champs globaux sans toucher aux styles existants.
     set_cell_value(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
     set_cell_value(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
-    
-    # Pour I6, extraire le mois (nombre) de la dernière date de la période (format mm/aaaa)
+
+    # Pour I6, extraire le mois (en nombre) de la dernière date de la période (format mm/aaaa).
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
         raise ValueError("Format de période invalide.")
+    # On suppose que la période est du type : "Du mm/aaaa au mm/aaaa et du mm/aaaa au mm/aaaa"
     quoted_date = parts[8]  # par exemple "12/2024"
     try:
         last_month = int(quoted_date.split("/")[0])
     except Exception:
         last_month = 0
     set_cell_value(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
-    
-    # Mise à jour des en-têtes (Année N et Année N-1) à partir de la période
+
+    # Mise à jour des en-têtes pour Année N et Année N-1 à partir de la période.
     quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
     quoted_date_N = parts[8]    # ex: "12/2024" pour N
     year_N_1 = quoted_date_N_1.split("/")[1]
@@ -65,8 +68,9 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
         set_cell_value(ws, cell, header_val_N)
     for cell in cells_N_1:
         set_cell_value(ws, cell, header_val_N_1)
-    
-    # Remplissage des données variables uniquement pour les cellules définies dans EXCEL_STRUCTURE
+
+    # Remplissage des données variables pour les cellules définies dans EXCEL_STRUCTURE.
+    # On suppose que data_par_produit contient uniquement les valeurs à l'intérieur des tableaux.
     for tableau, annees in config.EXCEL_STRUCTURE.items():
         for annee, produits in annees.items():
             for produit, cell in produits.items():
@@ -83,10 +87,13 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
                     valeur = 0
                 set_cell_value(ws, cell, valeur)
     
-    # Forcer Excel à recalculer lors de l'ouverture (si disponible)
+    # Pour forcer Excel à recalculer les mises en forme conditionnelles (barres de données, etc.),
+    # on ajoute une formule auxiliaire dans une colonne masquée (par exemple, colonne Z)
+    # puis on force le recalcul à l'ouverture du fichier.
+    ws["Z1"].value = "=SUM(D11:D16)"  # Adaptez la formule en fonction de vos besoins.
     try:
         wb.calculation_properties.fullCalcOnLoad = True
     except AttributeError:
         pass
-    
+
     return wb
