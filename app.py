@@ -1,11 +1,16 @@
 # app.py
+import sys
 import streamlit as st
 import io
 from extraction import extract_data_from_pdf, validate_client_info
-from excel_generator import load_template_workbook, fill_excel_workbook, update_excel_with_xlwings
-from openpyxl import load_workbook
+from excel_generator import load_template_workbook, fill_excel_workbook
 import config
-import sys
+
+# Import update_excel_with_xlwings uniquement sur Windows
+if sys.platform.startswith("win"):
+    from excel_generator import update_excel_with_xlwings
+else:
+    update_excel_with_xlwings = None
 
 # Fonction pour formater automatiquement la saisie d'une date au format mm/aaaa
 def format_date_field(key):
@@ -168,7 +173,7 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure pour additionner uniquement les cellules indiquées dans EXCEL_STRUCTURE
+            # Initialiser la structure pour additionner les valeurs des cellules définies dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -195,7 +200,7 @@ else:  # Mode "Addition de fichiers Excel"
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les valeurs dans les cellules définies dans EXCEL_STRUCTURE
+                # Additionner uniquement les valeurs dans les cellules spécifiées dans EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -214,10 +219,9 @@ else:  # Mode "Addition de fichiers Excel"
             new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            # Utiliser xlwings si l'environnement est Windows pour préserver exactement la mise en forme conditionnelle,
-            # sinon utiliser openpyxl (mais sur Linux les formats conditionnels complexes peuvent être altérés)
+            # Utiliser xlwings si disponible sur Windows pour préserver la mise en forme conditionnelle
             import sys
-            if sys.platform.startswith("win"):
+            if sys.platform.startswith("win") and update_excel_with_xlwings is not None:
                 from excel_generator import update_excel_with_xlwings
                 output_path = "output_combined.xlsx"
                 update_excel_with_xlwings(combined_data,
@@ -228,6 +232,7 @@ else:  # Mode "Addition de fichiers Excel"
                 with open(output_path, "rb") as f:
                     output_data = f.read()
             else:
+                # Sur non-Windows, utiliser openpyxl
                 from excel_generator import fill_excel_workbook
                 wb_new = load_template_workbook()
                 wb_new = fill_excel_workbook(wb_new,
