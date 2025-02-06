@@ -3,9 +3,9 @@ import streamlit as st
 import io
 from extraction import extract_data_from_pdf, validate_client_info
 from excel_generator import load_template_workbook, fill_excel_workbook, update_excel_with_xlwings
-import config
 from openpyxl import load_workbook
-from openpyxl.styles import Alignment
+import config
+import sys
 
 # Fonction pour formater automatiquement la saisie d'une date au format mm/aaaa
 def format_date_field(key):
@@ -17,7 +17,6 @@ def format_date_field(key):
     st.session_state[key] = formatted
 
 st.set_page_config(page_title="Extraction et Addition Excel", layout="wide")
-
 mode = st.radio("Sélectionnez le mode", options=["Extraction depuis PDF", "Addition de fichiers Excel"])
 
 if mode == "Extraction depuis PDF":
@@ -169,7 +168,7 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure pour additionner uniquement les valeurs des cellules définies dans EXCEL_STRUCTURE
+            # Initialiser la structure pour additionner uniquement les cellules indiquées dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -183,6 +182,7 @@ else:  # Mode "Addition de fichiers Excel"
             combined_period = None  # On utilisera la période du premier fichier
             
             # Parcourir chaque fichier Excel et additionner les valeurs
+            from openpyxl import load_workbook
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
@@ -195,7 +195,7 @@ else:  # Mode "Addition de fichiers Excel"
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les cellules indiquées dans EXCEL_STRUCTURE
+                # Additionner uniquement les valeurs dans les cellules définies dans EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -214,8 +214,8 @@ else:  # Mode "Addition de fichiers Excel"
             new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            # Selon l'environnement, utiliser xlwings (si Windows) pour préserver les formats conditionnels,
-            # sinon utiliser fill_excel_workbook avec openpyxl.
+            # Utiliser xlwings si l'environnement est Windows pour préserver exactement la mise en forme conditionnelle,
+            # sinon utiliser openpyxl (mais sur Linux les formats conditionnels complexes peuvent être altérés)
             import sys
             if sys.platform.startswith("win"):
                 from excel_generator import update_excel_with_xlwings
@@ -228,12 +228,13 @@ else:  # Mode "Addition de fichiers Excel"
                 with open(output_path, "rb") as f:
                     output_data = f.read()
             else:
-                # Sur non-Windows, utiliser openpyxl (attention : cela peut altérer les formats conditionnels complexes)
                 from excel_generator import fill_excel_workbook
                 wb_new = load_template_workbook()
-                wb_new = fill_excel_workbook(wb_new, combined_data, {"Nom du client": new_client_name,
-                                                                      "Comptes clients": new_client_accounts,
-                                                                      "Périodicité": new_period})
+                wb_new = fill_excel_workbook(wb_new,
+                                             combined_data,
+                                             {"Nom du client": new_client_name,
+                                              "Comptes clients": new_client_accounts,
+                                              "Périodicité": new_period})
                 output_buffer = io.BytesIO()
                 wb_new.save(output_buffer)
                 output_buffer.seek(0)
