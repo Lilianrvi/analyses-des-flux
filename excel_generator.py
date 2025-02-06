@@ -4,36 +4,38 @@ from openpyxl import load_workbook
 import config
 
 def load_template_workbook():
-    template_path = config.TEMPLATE_PATH
+    template_path = "template.xlsx"
     if not os.path.exists(template_path):
         raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
-    # Ouvrir en conservant formules et mise en forme (data_only=False)
-    wb = load_workbook(filename=template_path, data_only=False)
+    wb = load_workbook(filename=template_path)
     if config.EXCEL_SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
     return wb
 
-def update_cell(ws, cell_ref, new_value):
-    """
-    Met à jour uniquement la valeur de la cellule existante (ou celle en haut à gauche d'une plage fusionnée)
-    sans toucher aux styles ni aux règles conditionnelles.
-    """
+def set_cell_value(ws, cell_coord, value):
+    try:
+        numeric_value = int(value)
+    except (ValueError, TypeError):
+        numeric_value = None
     for merged_range in ws.merged_cells.ranges:
-        if cell_ref in merged_range:
-            cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
-            cell.value = new_value
+        if cell_coord in merged_range:
+            ws.cell(
+                row=merged_range.min_row,
+                column=merged_range.min_col,
+                value=numeric_value if numeric_value is not None else value
+            )
             return
-    ws[cell_ref].value = new_value
+    ws[cell_coord] = numeric_value if numeric_value is not None else value
 
 def fill_excel_workbook(wb, data_par_produit, client_info):
     ws = wb[config.EXCEL_SHEET_NAME]
-    # Mise à jour des champs globaux
-    update_cell(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
+    # Champs globaux
+    set_cell_value(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
-    update_cell(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
-    update_cell(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
+    set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
+    set_cell_value(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
     
-    # Mise à jour de I6 avec le mois extrait de la dernière date (format mm/aaaa)
+    # Pour I6, extraire le mois (nombre) de la dernière date de la période (format mm/aaaa)
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
@@ -43,25 +45,26 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
         last_month = int(quoted_date.split("/")[0])
     except Exception:
         last_month = 0
-    update_cell(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
+    set_cell_value(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
     
-    # Mise à jour des en-têtes pour Année N et Année N-1
-    quoted_date_N_1 = parts[1]  # ex: "01/2023"
-    quoted_date_N = parts[8]    # ex: "12/2024"
+    # Pour les en-têtes, on utilise la période du premier fichier Excel importé
+    # On attend le format "Du mm/aaaa au mm/aaaa et du mm/aaaa au mm/aaaa"
+    quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
+    quoted_date_N   = parts[8]  # ex: "12/2024" pour N
     year_N_1 = quoted_date_N_1.split("/")[1]
     year_N = quoted_date_N.split("/")[1]
     if year_N_1 == year_N:
         raise ValueError("Les années de comparaison sont identiques dans la période.")
     header_val_N_1 = int(year_N_1)
     header_val_N = int(year_N)
-    cells_N = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
+    cells_N   = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
     cells_N_1 = ["E9", "G9", "M9", "O9", "E36", "G36", "M36", "O36", "T37", "V37", "X37"]
     for cell in cells_N:
-        update_cell(ws, cell, header_val_N)
+        set_cell_value(ws, cell, header_val_N)
     for cell in cells_N_1:
-        update_cell(ws, cell, header_val_N_1)
+        set_cell_value(ws, cell, header_val_N_1)
     
-    # Remplissage des données des tableaux (uniquement les cellules indiquées dans EXCEL_STRUCTURE)
+    # Remplissage des données variables uniquement pour les cellules spécifiées
     for tableau, annees in config.EXCEL_STRUCTURE.items():
         for annee, produits in annees.items():
             for produit, cell in produits.items():
@@ -76,6 +79,44 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
                         valeur = 0
                 else:
                     valeur = 0
-                update_cell(ws, cell, valeur)
-    # Ne touchez pas aux styles ni aux règles conditionnelles.
+                set_cell_value(ws, cell, valeur)
+    return wb
+
+# Fonction dédiée pour l'addition des fichiers Excel
+def fill_excel_workbook_addition(wb, combined_data, period, client_name, client_accounts):
+    ws = wb[config.EXCEL_SHEET_NAME]
+    # Remplir les champs globaux à partir du premier fichier
+    ws[config.GLOBAL_FIELDS["Nom du client"]].value = client_name
+    ws[config.GLOBAL_FIELDS["Comptes clients"]].value = client_accounts
+    ws[config.GLOBAL_FIELDS["Périodicité"]].value = period
+    
+    # Reprendre les en-têtes à partir de la période (du premier fichier)
+    parts = period.split()
+    if len(parts) < 9:
+        raise ValueError("Format de période invalide dans le fichier Excel.")
+    quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
+    quoted_date_N = parts[8]    # ex: "12/2024" pour N
+    year_N_1 = quoted_date_N_1.split("/")[1]
+    year_N = quoted_date_N.split("/")[1]
+    if year_N_1 == year_N:
+        raise ValueError("Les années de comparaison sont identiques dans le fichier Excel.")
+    header_val_N_1 = int(year_N_1)
+    header_val_N = int(year_N)
+    cells_N   = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
+    cells_N_1 = ["E9", "G9", "M9", "O9", "E36", "G36", "M36", "O36", "T37", "V37", "X37"]
+    for cell in cells_N:
+        ws[cell].value = header_val_N
+    for cell in cells_N_1:
+        ws[cell].value = header_val_N_1
+    try:
+        header_I6 = int(quoted_date_N.split("/")[0])
+    except Exception:
+        header_I6 = 0
+    ws[config.GLOBAL_FIELDS["Dernier mois"]].value = header_I6
+    
+    # Remplissage des cellules des tableaux à partir de combined_data
+    for table, years in config.EXCEL_STRUCTURE.items():
+        for year, products in years.items():
+            for product, cell in products.items():
+                ws[cell].value = combined_data[table][year][product]
     return wb
