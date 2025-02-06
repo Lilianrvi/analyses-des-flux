@@ -7,7 +7,7 @@ def load_template_workbook():
     template_path = "template.xlsx"
     if not os.path.exists(template_path):
         raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
-    # Charge le workbook sans modifier les styles ni la mise en forme conditionnelle
+    # Chargez le workbook sans options spéciales (cela préserve les formules et formats)
     wb = load_workbook(filename=template_path)
     if config.EXCEL_SHEET_NAME not in wb.sheetnames:
         raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
@@ -15,36 +15,21 @@ def load_template_workbook():
 
 def set_cell_value(ws, cell_coord, value):
     """
-    Met à jour uniquement la valeur de la cellule existante sans toucher à son format.
-    Ceci permet de conserver la mise en forme conditionnelle (ex : remplissage rouge pour les valeurs négatives).
+    Met à jour uniquement la valeur de la cellule existante, sans modifier aucun style ni format.
+    Si la cellule fait partie d'une plage fusionnée, la cellule en haut à gauche de la plage est utilisée.
     """
-    # Récupère la cellule existante
-    cell = ws[cell_coord]
-    # Conserve le number_format avant modification
-    current_format = cell.number_format
-
-    # Tente de convertir la valeur en entier si possible
-    try:
-        numeric_value = int(value)
-    except (ValueError, TypeError):
-        numeric_value = None
-    new_value = numeric_value if numeric_value is not None else value
-
-    # Si la cellule fait partie d'une plage fusionnée, mettre à jour la cellule en haut à gauche
+    # Vérifier si la cellule est dans une plage fusionnée
     for merged_range in ws.merged_cells.ranges:
         if cell_coord in merged_range:
-            top_left = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
-            top_left.value = new_value
-            top_left.number_format = current_format
+            cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
+            cell.value = value
             return
-
-    # Mettre à jour la valeur de la cellule sans réinitialiser ses styles
-    cell.value = new_value
-    cell.number_format = current_format
+    # Sinon, mettre à jour directement la cellule
+    ws[cell_coord].value = value
 
 def fill_excel_workbook(wb, data_par_produit, client_info):
     ws = wb[config.EXCEL_SHEET_NAME]
-    # Mettre à jour les champs globaux sans toucher aux styles existants
+    # Mettre à jour les champs globaux sans modifier le style
     set_cell_value(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
@@ -55,16 +40,16 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     parts = period_str.split()
     if len(parts) < 9:
         raise ValueError("Format de période invalide.")
-    quoted_date = parts[8]  # ex: "12/2024"
+    quoted_date = parts[8]  # par exemple "12/2024"
     try:
         last_month = int(quoted_date.split("/")[0])
     except Exception:
         last_month = 0
     set_cell_value(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
     
-    # Mise à jour des en-têtes (Année N et Année N-1) à partir de la période
+    # Mise à jour des en-têtes (Année N et Année N-1)
     quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
-    quoted_date_N = parts[8]    # ex: "12/2024" pour N
+    quoted_date_N   = parts[8]  # ex: "12/2024" pour N
     year_N_1 = quoted_date_N_1.split("/")[1]
     year_N = quoted_date_N.split("/")[1]
     if year_N_1 == year_N:
@@ -78,7 +63,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     for cell in cells_N_1:
         set_cell_value(ws, cell, header_val_N_1)
     
-    # Remplissage des données variables dans les cellules du tableau définies dans EXCEL_STRUCTURE
+    # Remplissage des données variables dans les cellules des tableaux définies dans EXCEL_STRUCTURE
     for tableau, annees in config.EXCEL_STRUCTURE.items():
         for annee, produits in annees.items():
             for produit, cell in produits.items():
