@@ -6,6 +6,12 @@ from extraction import extract_data_from_pdf, validate_client_info
 from excel_generator import load_template_workbook, fill_excel_workbook
 import config
 
+# Import update_excel_with_xlwings uniquement sur Windows
+if sys.platform.startswith("win"):
+    from excel_generator import update_excel_with_xlwings
+else:
+    update_excel_with_xlwings = None
+
 # Fonction pour formater automatiquement une date au format mm/aaaa
 def format_date_field(key):
     val = st.session_state.get(key, "")
@@ -32,7 +38,7 @@ if mode == "Extraction depuis PDF":
     if not (date1 and date2 and date3 and date4):
         st.info("Veuillez remplir toutes les cases pour définir la période.")
         st.stop()
-    
+        
     period_string = f"Du {date1} au {date2} et du {date3} au {date4}"
     
     uploader_container = st.empty()
@@ -72,6 +78,7 @@ if mode == "Extraction depuis PDF":
                 data, _ = extract_data_from_pdf(pdf_file)
                 extracted_data.append(data)
             
+            # On suppose que tous les PDF appartiennent au même client et ont la même période.
             client_info = {
                 "Nom du client": extracted_data[0].get("Nom du client", ""),
                 "Comptes clients": extracted_data[0].get("Comptes clients", []),
@@ -135,9 +142,9 @@ if mode == "Extraction depuis PDF":
         except Exception as e:
             st.error(f"Une erreur s'est produite lors du traitement : {e}")
 
-else:
+else:  # Mode "Addition de fichiers Excel"
     st.title("Addition de Fichiers Excel")
-    st.write("Cette option vous permet de combiner les données de plusieurs fichiers Excel (templates préremplis) en additionnant uniquement les valeurs des cellules à l'intérieur des tableaux.")
+    st.write("Cette option vous permet de combiner les données de plusieurs fichiers Excel (templates préremplis) en additionnant uniquement les valeurs des cellules se trouvant à l'intérieur des tableaux.")
     
     st.subheader("Importer vos fichiers Excel")
     excel_container = st.empty()
@@ -167,7 +174,7 @@ else:
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure d'addition pour les cellules définies dans EXCEL_STRUCTURE
+            # Initialiser la structure pour additionner les valeurs des cellules dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -184,15 +191,17 @@ else:
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
+                # Récupérer les informations globales de chaque fichier
                 client_name = ws_file["G3"].value
                 client_accounts = ws_file["G4"].value
                 period = ws_file["G5"].value
                 if idx == 0:
-                    combined_period = period
+                    combined_period = period  # Utiliser la période du premier fichier
                 if client_name:
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
+                # Additionner uniquement les valeurs des cellules indiquées dans EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -206,13 +215,14 @@ else:
                                 val = 0.0
                             combined_data[table_key][year][product] += val
             
-            new_client_name = combined_global_names[0] if combined_global_names else ""
-            new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
+            # Pour les champs globaux, concaténer tous les noms et comptes avec " + "
+            new_client_name = " + ".join(combined_global_names) if combined_global_names else ""
+            new_client_accounts = " + ".join(combined_global_accounts) if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            # Si l'environnement est Windows et xlwings est disponible, on l'utilise pour préserver la mise en forme conditionnelle.
+            # Mettre à jour le nouveau classeur en fonction de l'environnement
             import sys
-            if sys.platform.startswith("win"):
+            if sys.platform.startswith("win") and update_excel_with_xlwings is not None:
                 from excel_generator import update_excel_with_xlwings
                 output_path = "output_combined.xlsx"
                 update_excel_with_xlwings(combined_data,
