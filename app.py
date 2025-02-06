@@ -12,7 +12,7 @@ if sys.platform.startswith("win"):
 else:
     update_excel_with_xlwings = None
 
-# Fonction pour formater automatiquement une date au format mm/aaaa
+# Fonction pour formater automatiquement la saisie d'une date au format mm/aaaa
 def format_date_field(key):
     val = st.session_state.get(key, "")
     digits = "".join(ch for ch in val if ch.isdigit())
@@ -174,7 +174,7 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure pour additionner les valeurs des cellules dans EXCEL_STRUCTURE
+            # Initialiser la structure pour additionner les cellules définies dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -191,17 +191,16 @@ else:  # Mode "Addition de fichiers Excel"
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
-                # Récupérer les informations globales de chaque fichier
                 client_name = ws_file["G3"].value
                 client_accounts = ws_file["G4"].value
                 period = ws_file["G5"].value
                 if idx == 0:
-                    combined_period = period  # Utiliser la période du premier fichier
+                    combined_period = period  # On prend la période du premier fichier
                 if client_name:
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les valeurs des cellules indiquées dans EXCEL_STRUCTURE
+                # Additionner uniquement les valeurs dans les cellules indiquées par EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -215,12 +214,12 @@ else:  # Mode "Addition de fichiers Excel"
                                 val = 0.0
                             combined_data[table_key][year][product] += val
             
-            # Pour les champs globaux, concaténer tous les noms et comptes avec " + "
+            # Concaténer les informations globales en joignant les valeurs avec " + "
             new_client_name = " + ".join(combined_global_names) if combined_global_names else ""
             new_client_accounts = " + ".join(combined_global_accounts) if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            # Mettre à jour le nouveau classeur en fonction de l'environnement
+            # Mise à jour du nouveau classeur selon l'environnement
             import sys
             if sys.platform.startswith("win") and update_excel_with_xlwings is not None:
                 from excel_generator import update_excel_with_xlwings
