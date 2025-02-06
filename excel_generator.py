@@ -1,63 +1,81 @@
 # excel_generator.py
-import xlwings as xw
+import os
+from openpyxl import load_workbook
 import config
 
-def update_excel_with_xlwings(combined_data, client_info, output_path):
-    """
-    Ouvre le template Excel avec xlwings, met à jour uniquement les valeurs (sans toucher aux styles),
-    déclenche un recalcul complet (pour que les règles conditionnelles se recalculent) et sauvegarde le résultat.
-    Nécessite Windows avec Microsoft Excel installé.
-    """
-    # Ouvrir le classeur template
-    wb = xw.Book(config.TEMPLATE_PATH)
-    ws = wb.sheets[config.EXCEL_SHEET_NAME]
+def load_template_workbook():
+    template_path = config.TEMPLATE_PATH
+    if not os.path.exists(template_path):
+        raise FileNotFoundError("Le fichier 'template.xlsx' est introuvable.")
+    # Ouvrir en conservant formules et mise en forme (data_only=False)
+    wb = load_workbook(filename=template_path, data_only=False)
+    if config.EXCEL_SHEET_NAME not in wb.sheetnames:
+        raise ValueError(f"La feuille '{config.EXCEL_SHEET_NAME}' est manquante.")
+    return wb
 
+def update_cell(ws, cell_ref, new_value):
+    """
+    Met à jour uniquement la valeur de la cellule existante (ou celle en haut à gauche d'une plage fusionnée)
+    sans toucher aux styles ni aux règles conditionnelles.
+    """
+    for merged_range in ws.merged_cells.ranges:
+        if cell_ref in merged_range:
+            cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
+            cell.value = new_value
+            return
+    ws[cell_ref].value = new_value
+
+def fill_excel_workbook(wb, data_par_produit, client_info):
+    ws = wb[config.EXCEL_SHEET_NAME]
     # Mise à jour des champs globaux
-    ws.range(config.GLOBAL_FIELDS["Nom du client"]).value = client_info.get("Nom du client", "")
+    update_cell(ws, config.GLOBAL_FIELDS["Nom du client"], client_info.get("Nom du client", ""))
     comptes = client_info.get("Comptes clients", [])
-    ws.range(config.GLOBAL_FIELDS["Comptes clients"]).value = ", ".join(comptes) if comptes else ""
-    ws.range(config.GLOBAL_FIELDS["Périodicité"]).value = client_info.get("Périodicité", "")
-
-    # Pour I6, extraire le mois (nombre) de la dernière date de la période (format mm/aaaa)
+    update_cell(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
+    update_cell(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
+    
+    # Mise à jour de I6 avec le mois extrait de la dernière date (format mm/aaaa)
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
-        wb.close()
         raise ValueError("Format de période invalide.")
-    quoted_date = parts[8]  # Par exemple "12/2024"
+    quoted_date = parts[8]  # ex: "12/2024"
     try:
         last_month = int(quoted_date.split("/")[0])
     except Exception:
         last_month = 0
-    ws.range(config.GLOBAL_FIELDS["Dernier mois"]).value = last_month
-
+    update_cell(ws, config.GLOBAL_FIELDS["Dernier mois"], last_month)
+    
     # Mise à jour des en-têtes pour Année N et Année N-1
-    quoted_date_N_1 = parts[1]  # ex: "01/2023" pour N-1
-    quoted_date_N = parts[8]    # ex: "12/2024" pour N
+    quoted_date_N_1 = parts[1]  # ex: "01/2023"
+    quoted_date_N = parts[8]    # ex: "12/2024"
     year_N_1 = quoted_date_N_1.split("/")[1]
     year_N = quoted_date_N.split("/")[1]
     if year_N_1 == year_N:
-        wb.close()
         raise ValueError("Les années de comparaison sont identiques dans la période.")
     header_val_N_1 = int(year_N_1)
     header_val_N = int(year_N)
     cells_N = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
     cells_N_1 = ["E9", "G9", "M9", "O9", "E36", "G36", "M36", "O36", "T37", "V37", "X37"]
     for cell in cells_N:
-        ws.range(cell).value = header_val_N
+        update_cell(ws, cell, header_val_N)
     for cell in cells_N_1:
-        ws.range(cell).value = header_val_N_1
-
-    # Remplissage des données des tableaux selon la structure EXCEL_STRUCTURE
-    # La structure de combined_data est : combined_data[table_key][year][product]
-    for table_key, years in config.EXCEL_STRUCTURE.items():
-        for year, products in years.items():
-            for product, cell in products.items():
-                valeur = combined_data[table_key][year][product]
-                ws.range(cell).value = valeur
-
-    # Forcer Excel à recalculer (ce qui mettra à jour les règles conditionnelles)
-    wb.app.calculate()
-
-    wb.save(output_path)
-    wb.close()
+        update_cell(ws, cell, header_val_N_1)
+    
+    # Remplissage des données des tableaux (uniquement les cellules indiquées dans EXCEL_STRUCTURE)
+    for tableau, annees in config.EXCEL_STRUCTURE.items():
+        for annee, produits in annees.items():
+            for produit, cell in produits.items():
+                if produit in data_par_produit and annee in data_par_produit[produit]:
+                    if tableau == "RC":
+                        valeur = data_par_produit[produit][annee].get("RC", 0)
+                    elif tableau == "Tonnage":
+                        valeur = data_par_produit[produit][annee].get("Tonnage", 0)
+                    elif tableau == "CA":
+                        valeur = data_par_produit[produit][annee].get("CA", 0)
+                    else:
+                        valeur = 0
+                else:
+                    valeur = 0
+                update_cell(ws, cell, valeur)
+    # Ne touchez pas aux styles ni aux règles conditionnelles.
+    return wb
