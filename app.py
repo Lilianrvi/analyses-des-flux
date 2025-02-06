@@ -2,29 +2,28 @@
 import streamlit as st
 import io
 from extraction import extract_data_from_pdf, validate_client_info
-from excel_generator import load_template_workbook, fill_excel_workbook
+from excel_generator import load_template_workbook  # Pour l'extraction PDF, on utilisera openpyxl
+from excel_generator import update_excel_with_xlwings  # Pour l'addition de fichiers Excel via xlwings
 import config
+from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 
 # Fonction pour formater automatiquement la saisie d'une date au format mm/aaaa
 def format_date_field(key):
     val = st.session_state.get(key, "")
     digits = "".join(ch for ch in val if ch.isdigit())
-    # Format attendu : mm/aaaa (2 chiffres pour le mois, 4 pour l'année)
     formatted = digits[:2]
     if len(digits) > 2:
         formatted += "/" + digits[2:6]
     st.session_state[key] = formatted
 
-# Configurer la page
 st.set_page_config(page_title="Extraction et Addition Excel", layout="wide")
 
-# Mode de sélection
 mode = st.radio("Sélectionnez le mode", options=["Extraction depuis PDF", "Addition de fichiers Excel"])
 
 if mode == "Extraction depuis PDF":
     st.title("Extraction Automatisée de Données PDF vers Excel")
-    st.write("Cette application vous permet d'extraire des données spécifiques de fichiers PDF et de générer un fichier Excel basé sur un template.")
+    st.write("Cette application vous permet d'extraire des données spécifiques de fichiers PDF et de générer un fichier Excel à partir d'un template préconfiguré.")
     
     st.subheader("Définissez la période d'analyse (format mm/aaaa)")
     col1, col2, col3, col4 = st.columns(4)
@@ -39,7 +38,6 @@ if mode == "Extraction depuis PDF":
         
     period_string = f"Du {date1} au {date2} et du {date3} au {date4}"
     
-    # File uploader pour PDF
     uploader_container = st.empty()
     uploaded_files = uploader_container.file_uploader(
         "Drag and drop files here (Limit 200MB per file • PDF)",
@@ -49,7 +47,6 @@ if mode == "Extraction depuis PDF":
         help="Les nouveaux fichiers remplaceront les précédents."
     )
     
-    # Bouton Clear Files pour PDF
     clear = st.button("Clear Files")
     if clear:
         st.session_state.file_uploader_key = st.session_state.get("file_uploader_key", 0) + 1
@@ -109,6 +106,8 @@ if mode == "Extraction depuis PDF":
                 st.error(error_msg)
                 st.stop()
             
+            # Pour l'extraction depuis PDF, on utilise openpyxl (comme précédemment)
+            from excel_generator import fill_excel_workbook
             wb = load_template_workbook()
             wb = fill_excel_workbook(wb, data_par_produit, client_info)
             if wb is None:
@@ -142,7 +141,7 @@ if mode == "Extraction depuis PDF":
 
 else:  # Mode "Addition de fichiers Excel"
     st.title("Addition de Fichiers Excel")
-    st.write("Cette option vous permet de combiner les données de plusieurs fichiers Excel (templates préremplis) en additionnant uniquement les cellules à l'intérieur des tableaux.")
+    st.write("Cette option vous permet de combiner les données de plusieurs fichiers Excel (templates préremplis) en additionnant uniquement les valeurs des cellules se trouvant à l'intérieur des tableaux.")
     
     st.subheader("Importer vos fichiers Excel")
     excel_container = st.empty()
@@ -173,7 +172,7 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure pour additionner uniquement les cellules des tableaux
+            # Initialiser la structure d'addition pour les cellules définies dans EXCEL_STRUCTURE
             combined_data = {}
             for table_key, years in config.EXCEL_STRUCTURE.items():
                 combined_data[table_key] = {}
@@ -186,7 +185,7 @@ else:  # Mode "Addition de fichiers Excel"
             combined_global_accounts = []
             combined_period = None  # On utilisera la période du premier fichier
             
-            # Parcourir chaque fichier Excel et additionner les valeurs dans les cellules indiquées
+            # Parcourir chaque fichier Excel et additionner les valeurs des cellules du tableau
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
@@ -199,7 +198,7 @@ else:  # Mode "Addition de fichiers Excel"
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les cellules correspondant à la structure (tableaux)
+                # Additionner uniquement les valeurs dans les cellules indiquées par EXCEL_STRUCTURE
                 for table_key, years in config.EXCEL_STRUCTURE.items():
                     for year, products in years.items():
                         for product, cell in products.items():
@@ -213,62 +212,28 @@ else:  # Mode "Addition de fichiers Excel"
                                 val = 0.0
                             combined_data[table_key][year][product] += val
             
-            new_wb = load_template_workbook()
             # Pour les champs globaux, on reprend ceux du premier fichier
             new_client_name = combined_global_names[0] if combined_global_names else ""
             new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
             new_period = combined_period if combined_period else "Période inconnue"
             
-            new_ws = new_wb[config.EXCEL_SHEET_NAME]
-            new_ws["G3"].value = new_client_name
-            new_ws["G4"].value = new_client_accounts
-            new_ws["G5"].value = new_period
+            # Utiliser xlwings pour mettre à jour le template Excel et conserver les mises en forme conditionnelles
+            from excel_generator import update_excel_with_xlwings
+            output_path = "output_combined.xlsx"
+            update_excel_with_xlwings(combined_data, 
+                                      {"Nom du client": new_client_name, 
+                                       "Comptes clients": new_client_accounts, 
+                                       "Périodicité": new_period},
+                                      output_path)
             
-            # Ajuster la cellule G3 (nom) pour renvoyer le texte à la ligne et centré
-            new_ws["G3"].alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")
-            new_ws.row_dimensions[3].height = 150
-            
-            # Mise à jour des en-têtes à reprendre depuis la période du premier fichier
-            period_parts = new_period.split()
-            if len(period_parts) < 9:
-                raise ValueError("Format de période invalide dans le fichier Excel.")
-            quoted_date_N_1 = period_parts[1]  # ex: "01/2023" pour N-1
-            quoted_date_N = period_parts[8]      # ex: "12/2024" pour N
-            year_N_1 = quoted_date_N_1.split("/")[1]
-            year_N = quoted_date_N.split("/")[1]
-            if year_N_1 == year_N:
-                raise ValueError("Les années de comparaison sont identiques dans le fichier Excel.")
-            header_val_N_1 = int(year_N_1)
-            header_val_N = int(year_N)
-            cells_N = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
-            cells_N_1 = ["E9", "G9", "M9", "O9", "E36", "G36", "M36", "O36", "T37", "V37", "X37"]
-            for cell in cells_N:
-                new_ws[cell].value = header_val_N
-            for cell in cells_N_1:
-                new_ws[cell].value = header_val_N_1
-            # Pour I6, extraire le mois de la dernière date (quoted_date_N)
-            try:
-                header_I6 = int(quoted_date_N.split("/")[0])
-            except Exception:
-                header_I6 = 0
-            new_ws[config.GLOBAL_FIELDS["Dernier mois"]].value = header_I6
-            
-            # Remplir les cellules des tableaux avec les valeurs additionnées
-            for table_key, years in config.EXCEL_STRUCTURE.items():
-                for year, products in years.items():
-                    for product, cell in products.items():
-                        new_ws[cell].value = combined_data[table_key][year][product]
-            
-            output_filename = f"ANALYSES DES FLUX {new_client_name}.xlsx"
-            output_buffer = io.BytesIO()
-            new_wb.save(output_buffer)
-            output_buffer.seek(0)
+            with open(output_path, "rb") as f:
+                output_data = f.read()
             
             st.success("Les fichiers Excel ont été combinés avec succès !")
             st.download_button(
                 label="Télécharger le fichier Excel combiné",
-                data=output_buffer,
-                file_name=output_filename,
+                data=output_data,
+                file_name=f"ANALYSES DES FLUX {new_client_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         except Exception as e:
