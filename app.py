@@ -34,11 +34,14 @@ if mode == "Extraction depuis PDF":
         st.info("Veuillez remplir toutes les cases pour définir la période.")
         st.stop()
         
+    # Construction de la chaîne de période
     period_string = f"Du {date1} au {date2} et du {date3} au {date4}"
+    # On s'assure que la période est au format attendu : ["Du", date1, "au", date2, "et", "du", date3, "au", date4"]
     parts = period_string.split()
     if len(parts) >= 9:
-        config.DATE_N_1 = parts[1]
-        config.DATE_N   = parts[8]
+        # Ces deux dates seront utilisées pour comparer les années extraites des PDF
+        config.DATE_N_1 = parts[1]  # ex: date de début (année N-1)
+        config.DATE_N   = parts[8]  # ex: date de fin (année N)
     
     uploader_container = st.empty()
     uploaded_files = uploader_container.file_uploader(
@@ -73,8 +76,9 @@ if mode == "Extraction depuis PDF":
     with st.spinner("Traitement des fichiers PDF..."):
         try:
             extracted_data = []
+            # On passe la chaîne de période pour que l'extraction compare avec les années saisies
             for pdf_file in uploaded_files:
-                data, _ = extract_data_from_pdf(pdf_file)
+                data, _ = extract_data_from_pdf(pdf_file, period=period_string)
                 extracted_data.append(data)
             
             client_info = {
@@ -176,7 +180,9 @@ else:
             combined_global_names = []
             combined_global_accounts = []
             
-            for table_key, years in config.get_excel_structure(config.DATE_N_1, config.DATE_N).items():
+            # On récupère la structure dynamique via la période stockée
+            excel_struct = config.get_excel_structure(config.DATE_N_1, config.DATE_N)
+            for table_key, years in excel_struct.items():
                 combined_data[table_key] = {}
                 for year, products in years.items():
                     combined_data[table_key][year] = {}
@@ -223,8 +229,6 @@ else:
                 raise ValueError("Format de période invalide dans le fichier Excel.")
             date_N_1 = parts[1]
             date_N   = parts[8]
-            config.DATE_N_1 = date_N_1
-            config.DATE_N   = date_N
             year_N_1 = date_N_1.split("/")[1]
             year_N   = date_N.split("/")[1]
             header_val_N_1 = int(year_N_1)
