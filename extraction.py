@@ -91,21 +91,8 @@ def extract_data_from_pdf(pdf):
                         match = re.search(r'(\d{4})', mois_val)
                         if match:
                             year = match.group(1)
-                            # Récupérer les années N et N-1 dynamiquement
-                            # Extraire la période depuis le client_info
-                            period_str = data.get('Périodicité', "")
-                            if period_str:
-                                # Extraire les années N et N-1
-                                period_parts = period_str.split()
-                                if len(period_parts) >= 9:
-                                    quoted_date_N_1 = period_parts[1]  # Ex: "01/2023"
-                                    quoted_date_N = period_parts[8]   # Ex: "12/2024"
-                                    year_N_1 = quoted_date_N_1.split("/")[1]
-                                    year_N = quoted_date_N.split("/")[1]
-                                    
-                                    # Comparer avec l'année extraite du texte du PDF
-                                    if year == year_N or year == year_N_1:
-                                        years.add(year)
+                            if year in ["2024", "2025"]:
+                                years.add(year)
                 data['Année'] = years.pop() if len(years)==1 else None
                 total_row = None
                 for row in analyse_table:
