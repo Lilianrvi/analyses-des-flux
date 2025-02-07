@@ -91,17 +91,17 @@ def extract_data_from_pdf(pdf, period=None):
                 data['RC'] = data['Tonnage'] = data['CA'] = 0
             else:
                 years = set()
-                # Si une période est fournie, extraire les deux dates pour obtenir les années à comparer
+                # Si une période est fournie, extraire les années du premier et du dernier date
                 if period:
                     parts = period.split()
                     if len(parts) >= 9:
-                        date_N_1 = parts[1]  # ex: "01/2024"
-                        date_N   = parts[8]  # ex: "12/2025"
+                        date_N_1 = parts[1]
+                        date_N   = parts[8]
                         compare_years = { date_N_1.split("/")[1], date_N.split("/")[1] }
                     else:
                         compare_years = set()
                 else:
-                    compare_years = set()  # Si aucune période n'est fournie, on ne filtre pas
+                    compare_years = set()
 
                 for row in analyse_table[1:]:
                     mois_val = row[0]
