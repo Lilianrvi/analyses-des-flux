@@ -22,7 +22,7 @@ PRODUCT_TONNAGE_FIELD = {
     "Direct Inter": "Tonnage",
 }
 
-# Structure Excel pour les tableaux par produit et par année
+# Fonction retournant la structure Excel selon deux dates (au format mm/aaaa)
 def get_excel_structure(date1, date2):
     year_N_1 = int(date1.split("/")[1])
     year_N   = int(date2.split("/")[1])
