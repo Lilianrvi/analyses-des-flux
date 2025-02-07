@@ -93,7 +93,3 @@ GLOBAL_FIELDS = {
 
 # Nom de la feuille Excel contenant toutes les tables
 EXCEL_SHEET_NAME = "KPI activité client"
-
-# Variables globales pour les dates dynamiques (mis à jour depuis app.py)
-DATE_N = None
-DATE_N_1 = None
