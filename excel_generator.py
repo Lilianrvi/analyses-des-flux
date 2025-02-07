@@ -35,7 +35,6 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
     set_cell_value(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
     
-    # Récupérer la période saisie par l'utilisateur et en extraire deux dates
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
