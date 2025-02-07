@@ -35,14 +35,13 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
     set_cell_value(ws, config.GLOBAL_FIELDS["Comptes clients"], ", ".join(comptes) if comptes else "")
     set_cell_value(ws, config.GLOBAL_FIELDS["Périodicité"], client_info.get("Périodicité", ""))
     
+    # Récupérer la période saisie par l'utilisateur et en extraire deux dates
     period_str = client_info.get("Périodicité", "")
     parts = period_str.split()
     if len(parts) < 9:
         raise ValueError("Format de période invalide.")
     date_N_1 = parts[1]  # ex: "01/2023"
     date_N   = parts[8]  # ex: "12/2024"
-    config.DATE_N_1 = date_N_1
-    config.DATE_N   = date_N
     
     try:
         last_month = int(date_N.split("/")[0])
@@ -90,8 +89,6 @@ def fill_excel_workbook_addition(wb, combined_data, period, client_name, client_
         raise ValueError("Format de période invalide dans le fichier Excel.")
     date_N_1 = parts[1]
     date_N   = parts[8]
-    config.DATE_N_1 = date_N_1
-    config.DATE_N   = date_N
     year_N_1 = date_N_1.split("/")[1]
     year_N   = date_N.split("/")[1]
     header_val_N_1 = int(year_N_1)
