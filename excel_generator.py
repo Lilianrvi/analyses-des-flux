@@ -65,7 +65,7 @@ def fill_excel_workbook(wb, data_par_produit, client_info):
         set_cell_value(ws, cell, header_val_N_1)
     
     # Remplissage des données variables uniquement pour les cellules spécifiées
-    for tableau, annees in config.EXCEL_STRUCTURE.items():
+    for tableau, annees in config.get_excel_structure(date_N_1, date_N):
         for annee, produits in annees.items():
             for produit, cell in produits.items():
                 if produit in data_par_produit and annee in data_par_produit[produit]:
@@ -115,7 +115,7 @@ def fill_excel_workbook_addition(wb, combined_data, period, client_name, client_
     ws[config.GLOBAL_FIELDS["Dernier mois"]].value = header_I6
     
     # Remplissage des cellules des tableaux à partir de combined_data
-    for table, years in config.EXCEL_STRUCTURE.items():
+    for table, years in config.get_excel_structure(date_N_1, date_N):
         for year, products in years.items():
             for product, cell in products.items():
                 ws[cell].value = combined_data[table][year][product]
