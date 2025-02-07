@@ -91,7 +91,7 @@ def extract_data_from_pdf(pdf):
                         match = re.search(r'(\d{4})', mois_val)
                         if match:
                             year = match.group(1)
-                            if year in ["2023", "2024"]:
+                            if year in ["2024", "2025"]:
                                 years.add(year)
                 data['Année'] = years.pop() if len(years)==1 else None
                 total_row = None
