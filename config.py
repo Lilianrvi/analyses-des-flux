@@ -27,7 +27,7 @@ PRODUCT_TONNAGE_FIELD = {
 # Structure Excel pour les tableaux par produit et par année
 EXCEL_STRUCTURE = {
     "RC": {
-        "2024": {
+        "2025": {
             "Systeme France": "D11",
             "Pallet France": "D12",
             "Premium France": "D13",
@@ -35,7 +35,7 @@ EXCEL_STRUCTURE = {
             "Direct France": "D15",
             "Direct Inter": "D16"
         },
-        "2023": {
+        "2024": {
             "Systeme France": "E11",
             "Pallet France": "E12",
             "Premium France": "E13",
@@ -45,7 +45,7 @@ EXCEL_STRUCTURE = {
         }
     },
     "Tonnage": {
-        "2024": {
+        "2025": {
             "Systeme France": "L11",
             "Pallet France": "L12",
             "Premium France": "L13",
@@ -53,7 +53,7 @@ EXCEL_STRUCTURE = {
             "Direct France": "L15",
             "Direct Inter": "L16"
         },
-        "2023": {
+        "2024": {
             "Systeme France": "M11",
             "Pallet France": "M12",
             "Premium France": "M13",
@@ -63,7 +63,7 @@ EXCEL_STRUCTURE = {
         }
     },
     "CA": {
-        "2024": {
+        "2025": {
             "Systeme France": "D38",
             "Pallet France": "D39",
             "Premium France": "D40",
@@ -71,7 +71,7 @@ EXCEL_STRUCTURE = {
             "Direct France": "D42",
             "Direct Inter": "D43"
         },
-        "2023": {
+        "2024": {
             "Systeme France": "E38",
             "Pallet France": "E39",
             "Premium France": "E40",
