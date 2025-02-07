@@ -7,20 +7,16 @@ from openpyxl import load_workbook
 import config
 from openpyxl.styles import Alignment
 
-# Fonction pour formater automatiquement la saisie d'une date au format mm/aaaa
 def format_date_field(key):
     val = st.session_state.get(key, "")
     digits = "".join(ch for ch in val if ch.isdigit())
-    # Format attendu : mm/aaaa (2 chiffres pour le mois, 4 pour l'année)
     formatted = digits[:2]
     if len(digits) > 2:
         formatted += "/" + digits[2:6]
     st.session_state[key] = formatted
 
-# Configurer la page
 st.set_page_config(page_title="Extraction et Addition Excel", layout="wide")
 
-# Mode de sélection
 mode = st.radio("Sélectionnez le mode", options=["Extraction depuis PDF", "Addition de fichiers Excel"])
 
 if mode == "Extraction depuis PDF":
@@ -39,8 +35,11 @@ if mode == "Extraction depuis PDF":
         st.stop()
         
     period_string = f"Du {date1} au {date2} et du {date3} au {date4}"
+    parts = period_string.split()
+    if len(parts) >= 9:
+        config.DATE_N_1 = parts[1]
+        config.DATE_N   = parts[8]
     
-    # File uploader pour PDF
     uploader_container = st.empty()
     uploaded_files = uploader_container.file_uploader(
         "Drag and drop files here (Limit 200MB per file • PDF)",
@@ -50,7 +49,6 @@ if mode == "Extraction depuis PDF":
         help="Les nouveaux fichiers remplaceront les précédents."
     )
     
-    # Bouton Clear Files pour PDF
     clear = st.button("Clear Files")
     if clear:
         st.session_state.file_uploader_key = st.session_state.get("file_uploader_key", 0) + 1
@@ -141,7 +139,7 @@ if mode == "Extraction depuis PDF":
         except Exception as e:
             st.error(f"Une erreur s'est produite lors du traitement : {e}")
 
-else:  # Mode "Addition de fichiers Excel"
+else:
     st.title("Addition de Fichiers Excel")
     st.write("Cette option vous permet de combiner les données de plusieurs fichiers Excel (templates préremplis) en additionnant uniquement les cellules à l'intérieur des tableaux.")
     
@@ -154,7 +152,6 @@ else:  # Mode "Addition de fichiers Excel"
         key="excel_files"
     )
     
-    # Bouton Clear Files pour Excel
     clear_excel = st.button("Clear Excel Files")
     if clear_excel:
         st.session_state.excel_uploader_key = st.session_state.get("excel_uploader_key", 0) + 1
@@ -174,34 +171,29 @@ else:  # Mode "Addition de fichiers Excel"
     
     with st.spinner("Combinaison des fichiers Excel..."):
         try:
-            # Initialiser la structure pour additionner uniquement les cellules des tableaux
             combined_data = {}
-            for table_key, years in config.EXCEL_STRUCTURE.items():
+            period = None
+            combined_global_names = []
+            combined_global_accounts = []
+            
+            for table_key, years in config.get_excel_structure(config.DATE_N_1, config.DATE_N).items():
                 combined_data[table_key] = {}
                 for year, products in years.items():
                     combined_data[table_key][year] = {}
                     for product, cell in products.items():
                         combined_data[table_key][year][product] = 0.0
             
-            combined_global_names = []
-            combined_global_accounts = []
-            combined_period = None  # On utilisera la période du premier fichier
-            
-            # Parcourir chaque fichier Excel et additionner les valeurs dans les cellules indiquées
             for idx, file in enumerate(excel_files):
                 wb_file = load_workbook(filename=io.BytesIO(file.read()), data_only=True)
                 ws_file = wb_file[config.EXCEL_SHEET_NAME]
                 client_name = ws_file["G3"].value
                 client_accounts = ws_file["G4"].value
                 period = ws_file["G5"].value
-                if idx == 0:
-                    combined_period = period  # On prend la période du premier fichier
                 if client_name:
                     combined_global_names.append(str(client_name))
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
-                # Additionner uniquement les cellules correspondant à la structure (tableaux)
-                for table_key, years in config.EXCEL_STRUCTURE.items():
+                for table_key, years in config.get_excel_structure(config.DATE_N_1, config.DATE_N).items():
                     for year, products in years.items():
                         for product, cell in products.items():
                             try:
@@ -215,51 +207,41 @@ else:  # Mode "Addition de fichiers Excel"
                             combined_data[table_key][year][product] += val
             
             new_wb = load_template_workbook()
-            # Pour les champs globaux, on reprend ceux du premier fichier
             new_client_name = combined_global_names[0] if combined_global_names else ""
             new_client_accounts = combined_global_accounts[0] if combined_global_accounts else ""
-            new_period = combined_period if combined_period else "Période inconnue"
-            
+            new_period = period if period else "Période inconnue"
             new_ws = new_wb[config.EXCEL_SHEET_NAME]
             new_ws["G3"].value = new_client_name
             new_ws["G4"].value = new_client_accounts
             new_ws["G5"].value = new_period
             
-            # Ajuster la cellule G3 (nom) pour renvoyer le texte à la ligne et centré
             new_ws["G3"].alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")
             new_ws.row_dimensions[3].height = 150
             
-            # Mise à jour des en-têtes à reprendre depuis la période du premier fichier
-            period_parts = new_period.split()
-            if len(period_parts) < 9:
+            parts = new_period.split()
+            if len(parts) < 9:
                 raise ValueError("Format de période invalide dans le fichier Excel.")
-            quoted_date_N_1 = period_parts[1]  # ex: "01/2023" pour N-1
-            quoted_date_N = period_parts[8]      # ex: "12/2024" pour N
-            year_N_1 = quoted_date_N_1.split("/")[1]
-            year_N = quoted_date_N.split("/")[1]
-            if year_N_1 == year_N:
-                raise ValueError("Les années de comparaison sont identiques dans le fichier Excel.")
+            date_N_1 = parts[1]
+            date_N   = parts[8]
+            config.DATE_N_1 = date_N_1
+            config.DATE_N   = date_N
+            year_N_1 = date_N_1.split("/")[1]
+            year_N   = date_N.split("/")[1]
             header_val_N_1 = int(year_N_1)
-            header_val_N = int(year_N)
-            cells_N = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
+            header_val_N   = int(year_N)
+            cells_N   = ["D9", "F9", "L9", "N9", "D36", "F36", "L36", "N36", "R9", "S37", "U37", "W37"]
             cells_N_1 = ["E9", "G9", "M9", "O9", "E36", "G36", "M36", "O36", "T37", "V37", "X37"]
             for cell in cells_N:
                 new_ws[cell].value = header_val_N
             for cell in cells_N_1:
                 new_ws[cell].value = header_val_N_1
-            # Pour I6, extraire le mois de la dernière date (quoted_date_N)
             try:
-                header_I6 = int(quoted_date_N.split("/")[0])
+                header_I6 = int(date_N.split("/")[0])
             except Exception:
                 header_I6 = 0
             new_ws[config.GLOBAL_FIELDS["Dernier mois"]].value = header_I6
             
-            # Remplir les cellules des tableaux avec les valeurs additionnées
-            for table_key, years in config.EXCEL_STRUCTURE.items():
-                for year, products in years.items():
-                    for product, cell in products.items():
-                        new_ws[cell].value = combined_data[table_key][year][product]
-            
+            new_wb = fill_excel_workbook_addition(new_wb, combined_data, new_period, new_client_name, new_client_accounts)
             output_filename = f"ANALYSES DES FLUX {new_client_name}.xlsx"
             output_buffer = io.BytesIO()
             new_wb.save(output_buffer)
