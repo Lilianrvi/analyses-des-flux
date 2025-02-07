@@ -2,20 +2,19 @@
 import pdfplumber
 import re
 import string
-from config import PRODUCT_MAPPING, PRODUCT_TONNAGE_FIELD
+from config import PRODUCT_MAPPING, PRODUCT_TONNAGE_FIELD, DATE_N, DATE_N_1
 
 def extract_data_from_pdf(pdf):
     data = {}
     with pdfplumber.open(pdf) as pdf_obj:
         first_page = pdf_obj.pages[0]
         text = first_page.extract_text()
-        full_text = text  # Pour débogage
+        full_text = text
 
         print("----- Début du texte du PDF -----")
         print(text)
         print("----- Fin du texte du PDF -----")
 
-        # Extraction du Nom du client
         client_match = re.search(r'Analyse des ventes par client\s+([^\s].*?)\s+\d{2}/\d{2}/\d{4}', text, re.IGNORECASE)
         if client_match:
             data['Nom du client'] = client_match.group(1).strip()
@@ -23,7 +22,6 @@ def extract_data_from_pdf(pdf):
             client_match = re.search(r'Analyse des ventes par client\s+(.+?)\s+\d{2}/\d{2}/\d{4}', text, re.IGNORECASE)
             data['Nom du client'] = client_match.group(1).strip() if client_match else ''
 
-        # Extraction des Comptes clients
         comptes_match = re.search(r'Compte(?:\(s\))?\s*:\s*\[([^\]]+)\]', text, re.IGNORECASE)
         if comptes_match:
             comptes_str = comptes_match.group(1)
@@ -34,7 +32,6 @@ def extract_data_from_pdf(pdf):
             data['Comptes clients'] = []
             print("Comptes clients non trouvés")
 
-        # Extraction du Produit concerné
         if comptes_match:
             start_pos = comptes_match.end()
             text_after = text[start_pos:]
@@ -58,12 +55,11 @@ def extract_data_from_pdf(pdf):
                 data['Produit concerné'] = None
                 print("Produit non trouvé dans le texte")
         
-        # Extraction des données du tableau (année, RC, Tonnage, CA)
         tables = pdf_obj.pages[0].extract_tables()
         analyse_table = None
         for table in tables:
             headers = table[0]
-            if any('mois' in header.lower() for header in headers):
+            if any(header and 'mois' in header.lower() for header in headers):
                 analyse_table = table
                 break
         
@@ -72,13 +68,14 @@ def extract_data_from_pdf(pdf):
             tonnage_field = PRODUCT_TONNAGE_FIELD.get(data.get('Produit concerné'), 'Tonnage')
             header_map = {}
             for idx, header in enumerate(analyse_table[0]):
-                header_clean = header.strip().lower()
-                if 'nb rc' in header_clean or 'nb dossier' in header_clean:
-                    header_map['RC'] = idx
-                if header_clean == tonnage_field.lower():
-                    header_map['Tonnage'] = idx
-                if 'ca ht facturé' in header_clean or 'ca ht facture' in header_clean:
-                    header_map['CA'] = idx
+                if header:
+                    header_clean = header.strip().lower()
+                    if 'nb rc' in header_clean or 'nb dossier' in header_clean:
+                        header_map['RC'] = idx
+                    if header_clean == tonnage_field.lower():
+                        header_map['Tonnage'] = idx
+                    if 'ca ht facturé' in header_clean or 'ca ht facture' in header_clean:
+                        header_map['CA'] = idx
             print(f"Mapping des en-têtes : {header_map}")
             
             if not all(k in header_map for k in ['RC', 'Tonnage', 'CA']):
@@ -91,12 +88,15 @@ def extract_data_from_pdf(pdf):
                         match = re.search(r'(\d{4})', mois_val)
                         if match:
                             year = match.group(1)
-                            if year in ["2024", "2025"]:
-                                years.add(year)
-                data['Année'] = years.pop() if len(years)==1 else None
+                            if DATE_N and DATE_N_1:
+                                year_N = DATE_N.split("/")[1]
+                                year_N_1 = DATE_N_1.split("/")[1]
+                                if year == year_N or year == year_N_1:
+                                    years.add(year)
+                data['Année'] = years.pop() if len(years) == 1 else None
                 total_row = None
                 for row in analyse_table:
-                    if any(k.lower() in row[0].lower() for k in ['totaux', 'total']):
+                    if row[0] and any(k.lower() in row[0].lower() for k in ['totaux', 'total']):
                         total_row = row
                         break
                 if total_row:
