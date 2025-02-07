@@ -176,7 +176,7 @@ else:  # Mode "Addition de fichiers Excel"
         try:
             # Initialiser la structure pour additionner uniquement les cellules des tableaux
             combined_data = {}
-            for table_key, years in config.EXCEL_STRUCTURE.items():
+            for table_key, years in config.get_excel_structure(date_N_1, date_N):
                 combined_data[table_key] = {}
                 for year, products in years.items():
                     combined_data[table_key][year] = {}
@@ -201,7 +201,7 @@ else:  # Mode "Addition de fichiers Excel"
                 if client_accounts:
                     combined_global_accounts.append(str(client_accounts))
                 # Additionner uniquement les cellules correspondant à la structure (tableaux)
-                for table_key, years in config.EXCEL_STRUCTURE.items():
+                for table_key, years in config.get_excel_structure(date_N_1, date_N):
                     for year, products in years.items():
                         for product, cell in products.items():
                             try:
@@ -255,7 +255,7 @@ else:  # Mode "Addition de fichiers Excel"
             new_ws[config.GLOBAL_FIELDS["Dernier mois"]].value = header_I6
             
             # Remplir les cellules des tableaux avec les valeurs additionnées
-            for table_key, years in config.EXCEL_STRUCTURE.items():
+            for table_key, years in config.get_excel_structure(date_N_1, date_N):
                 for year, products in years.items():
                     for product, cell in products.items():
                         new_ws[cell].value = combined_data[table_key][year][product]
