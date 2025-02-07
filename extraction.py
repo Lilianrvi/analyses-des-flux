@@ -2,9 +2,9 @@
 import pdfplumber
 import re
 import string
-from config import PRODUCT_MAPPING, PRODUCT_TONNAGE_FIELD, DATE_N, DATE_N_1
+from config import PRODUCT_MAPPING, PRODUCT_TONNAGE_FIELD
 
-def extract_data_from_pdf(pdf):
+def extract_data_from_pdf(pdf, period=None):
     data = {}
     with pdfplumber.open(pdf) as pdf_obj:
         first_page = pdf_obj.pages[0]
@@ -15,14 +15,21 @@ def extract_data_from_pdf(pdf):
         print(text)
         print("----- Fin du texte du PDF -----")
 
-        client_match = re.search(r'Analyse des ventes par client\s+([^\s].*?)\s+\d{2}/\d{2}/\d{4}', text, re.IGNORECASE)
+        # Extraction du Nom du client
+        client_match = re.search(
+            r'Analyse des ventes par client\s+([^\s].*?)\s+\d{2}/\d{2}/\d{4}',
+            text, re.IGNORECASE)
         if client_match:
             data['Nom du client'] = client_match.group(1).strip()
         else:
-            client_match = re.search(r'Analyse des ventes par client\s+(.+?)\s+\d{2}/\d{2}/\d{4}', text, re.IGNORECASE)
+            client_match = re.search(
+                r'Analyse des ventes par client\s+(.+?)\s+\d{2}/\d{2}/\d{4}',
+                text, re.IGNORECASE)
             data['Nom du client'] = client_match.group(1).strip() if client_match else ''
 
-        comptes_match = re.search(r'Compte(?:\(s\))?\s*:\s*\[([^\]]+)\]', text, re.IGNORECASE)
+        # Extraction des Comptes clients
+        comptes_match = re.search(
+            r'Compte(?:\(s\))?\s*:\s*\[([^\]]+)\]', text, re.IGNORECASE)
         if comptes_match:
             comptes_str = comptes_match.group(1)
             comptes = re.findall(r'\d+', comptes_str)
@@ -32,6 +39,7 @@ def extract_data_from_pdf(pdf):
             data['Comptes clients'] = []
             print("Comptes clients non trouvés")
 
+        # Extraction du Produit concerné
         if comptes_match:
             start_pos = comptes_match.end()
             text_after = text[start_pos:]
@@ -55,6 +63,7 @@ def extract_data_from_pdf(pdf):
                 data['Produit concerné'] = None
                 print("Produit non trouvé dans le texte")
         
+        # Extraction des données du tableau (année, RC, Tonnage, CA)
         tables = pdf_obj.pages[0].extract_tables()
         analyse_table = None
         for table in tables:
@@ -62,7 +71,7 @@ def extract_data_from_pdf(pdf):
             if any(header and 'mois' in header.lower() for header in headers):
                 analyse_table = table
                 break
-        
+
         if analyse_table:
             print("Table 'Analyse par mois de transport' trouvée")
             tonnage_field = PRODUCT_TONNAGE_FIELD.get(data.get('Produit concerné'), 'Tonnage')
@@ -77,22 +86,31 @@ def extract_data_from_pdf(pdf):
                     if 'ca ht facturé' in header_clean or 'ca ht facture' in header_clean:
                         header_map['CA'] = idx
             print(f"Mapping des en-têtes : {header_map}")
-            
+
             if not all(k in header_map for k in ['RC', 'Tonnage', 'CA']):
                 data['RC'] = data['Tonnage'] = data['CA'] = 0
             else:
                 years = set()
+                # Si une période est fournie, extraire les deux dates pour obtenir les années à comparer
+                if period:
+                    parts = period.split()
+                    if len(parts) >= 9:
+                        date_N_1 = parts[1]  # ex: "01/2024"
+                        date_N   = parts[8]  # ex: "12/2025"
+                        compare_years = { date_N_1.split("/")[1], date_N.split("/")[1] }
+                    else:
+                        compare_years = set()
+                else:
+                    compare_years = set()  # Si aucune période n'est fournie, on ne filtre pas
+
                 for row in analyse_table[1:]:
                     mois_val = row[0]
                     if mois_val and mois_val.strip() and not mois_val.strip().lower().startswith("total"):
                         match = re.search(r'(\d{4})', mois_val)
                         if match:
                             year = match.group(1)
-                            if DATE_N and DATE_N_1:
-                                year_N = DATE_N.split("/")[1]
-                                year_N_1 = DATE_N_1.split("/")[1]
-                                if year == year_N or year == year_N_1:
-                                    years.add(year)
+                            if not compare_years or year in compare_years:
+                                years.add(year)
                 data['Année'] = years.pop() if len(years) == 1 else None
                 total_row = None
                 for row in analyse_table:
